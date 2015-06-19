@@ -1,0 +1,119 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Georg Vogelhuber"
+date: "16. Juni 2015"
+output: html_document
+---
+
+# Summary
+https://github.com/mewwts/practical-machine-learning/blob/gh-pages/index.Rmd
+https://rpubs.com/kdalve/pmachlearn
+https://1d6ad6a8d94a92bd2b6795d46660c3c32c9b1993.googledrive.com/host/0B8i6TcHtjgmcN0hGSUpkTlBZdDg/project.html
+
+# Preliminary steps
+
+First we load the necessary libraries and set the random seed to ensure reproducability.
+
+```{r, message=FALSE}
+library(Amelia)   
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(lubridate)
+library(doParallel)
+library(rattle)
+
+set.seed(11111)
+```
+
+Next we read training and testing data sets:
+```{r}
+training_data <- read.csv("pml-training.csv", na.strings = c("NA", "", "#DIV/0!"))
+testing_data <- read.csv("pml-testing.csv", na.strings = c("NA", "", "#DIV/0!"))
+```
+
+The missmap-plot from the Amelia-packages shows that there are several columns 
+containing mostly NA values:
+```{r}
+missmap(training_data)
+```
+
+From the provided webpage and related papers, it is clear that the data is collected in rolling, overlapping time windows, and that the rows with `new_window == 'yes'` holds the aggregates of either the preceeding or following rows.  As there are only
+```{r}
+sum(training_data$new_windows=="yes")
+```
+of these rows, we remove them from our training data.
+```{r}
+training_data %>% filter(new_window=="no") -> training_data
+```
+
+After removing these rows, there are columns made up only of NA values. We also remove
+these columns:
+```{r}
+nr_rows <- dim(training_data)[[1]]
+na_count <- apply(X = training_data, 2, function(x) {sum(is.na(x))})
+
+training_data <- tbl_df(training_data[, !(na_count == nr_rows)])
+training_data %>% select(-new_window, -X) -> training_data
+```
+
+Finally the data-values in the `cvtd_timestamp` column are parsed into the date-format.
+```{r}
+training_data %>% mutate(cvtd_timestamp= dmy_hm(cvtd_timestamp)) -> training_data
+testing_data %>% mutate(cvtd_timestamp= dmy_hm(cvtd_timestamp)) -> testing_data
+```
+
+Now we split the training data into a training and a cross validation set:
+```{r}
+in_train <- createDataPartition(training_data$classe, p = 0.75, list=FALSE)
+training <- training_data[in_train,]
+cross_validation <- training_data[-in_train,]
+```
+
+# Train Random Forrest
+
+We use a random forrest classifier to build our model, because a random forrest can handle different classes for prediction very well
+and has also provides good accuracy. We use a 10-fold cross-validation to train the random forrest on the `training` data.
+
+```{r, cache=TRUE}
+fit_control <- trainControl(
+  method = "cv",
+  number = 10
+  )
+
+cl <- makeCluster(3)
+registerDoParallel(cl)
+
+model_fit <- train(classe~.,
+                   data=training,
+                   method="rf",
+                   trControl=fit_control,
+                   allowParallel=TRUE )
+stopCluster(cl)
+
+```
+
+The final model:
+```{r}
+model_fit
+```
+
+# Model evaluation
+
+```{r}
+varImpPlot(model_fit$finalModel)
+```
+
+```{r}
+confusionMatrix(training$classe, predict(model_fit, training))
+```
+
+```{r}
+confusionMatrix(cross_validation$classe, predict(model_fit, cross_validation))
+```
+
+# Prediction for test set
+
+```{r}
+predict(model_fit, testing_data)
+```
