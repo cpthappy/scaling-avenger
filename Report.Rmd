@@ -2,13 +2,18 @@
 title: "Practical Machine Learning - Course Project"
 author: "Georg Vogelhuber"
 date: "16. Juni 2015"
-output: html_document
+output: 
+  html_document: 
+    keep_md: yes
 ---
 
-# Summary
-https://github.com/mewwts/practical-machine-learning/blob/gh-pages/index.Rmd
-https://rpubs.com/kdalve/pmachlearn
-https://1d6ad6a8d94a92bd2b6795d46660c3c32c9b1993.googledrive.com/host/0B8i6TcHtjgmcN0hGSUpkTlBZdDg/project.html
+# Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement  a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+# Goal
+The goal of this project is to predict the manner in which they did the exercise. This is the “classe” variable in the training set. We use all of the available variables to predict with. 
+
+More detailed information on the data for this project is available from the website http://groupware.les.inf.puc-rio.br/har.
 
 # Preliminary steps
 
@@ -40,7 +45,7 @@ missmap(training_data)
 
 From the provided webpage and related papers, it is clear that the data is collected in rolling, overlapping time windows, and that the rows with `new_window == 'yes'` holds the aggregates of either the preceeding or following rows.  As there are only
 ```{r}
-sum(training_data$new_windows=="yes")
+sum(training_data$new_window=="yes")
 ```
 of these rows, we remove them from our training data.
 ```{r}
@@ -70,9 +75,9 @@ training <- training_data[in_train,]
 cross_validation <- training_data[-in_train,]
 ```
 
-# Train Random Forrest
+# Train Random Forest
 
-We use a random forrest classifier to build our model, because a random forrest can handle different classes for prediction very well
+We use a random forest classifier to build our model, because a random forrest can handle different classes for prediction very well
 and has also provides good accuracy. We use a 10-fold cross-validation to train the random forrest on the `training` data.
 
 ```{r, cache=TRUE}
@@ -98,20 +103,62 @@ The final model:
 model_fit
 ```
 
+```{r}
+summary(model_fit$finalModel)
+```
+
 # Model evaluation
 
-```{r}
+The following variables are the most important features for the final model:
+```{r, message=FALSE}
+library(randomForest)
 varImpPlot(model_fit$finalModel)
 ```
+As we can see, the predicted class depends heavily on the time the exercice was executed. So
+for a meaningful model one should exclude the timestamp variables. As this was not asked in
+the project assignment, we keep this model.
 
+Now we check the accuracy on the training and cross validation set:
 ```{r}
-confusionMatrix(training$classe, predict(model_fit, training))
+train_cm <- confusionMatrix(training$classe, predict(model_fit, training))
+train_cm
 ```
 
 ```{r}
-confusionMatrix(cross_validation$classe, predict(model_fit, cross_validation))
+cross_cm <- confusionMatrix(cross_validation$classe, predict(model_fit, cross_validation))
+cross_cm
 ```
 
+# Sample Error
+
+The accuracy for the training set is in the 95% confidence intervall
+```{r}
+c(train_cm$overall[3],train_cm$overall[4])
+```
+So the training classification error has a 95% confidence intervall of
+```{r}
+ci <- c(1-train_cm$overall[4],1-train_cm$overall[3])
+names(ci) <- NULL
+ci
+```
+
+The accuracy for the cross validation set is in the 95% confidence intervall
+```{r}
+c(cross_cm$overall[3],cross_cm$overall[4])
+```
+So the out of sample classification error has a 95% confidence intervall of
+```{r}
+ci <- c(1-cross_cm$overall[4],1-cross_cm$overall[3])
+names(ci) <- NULL
+ci
+```
+
+The estimated value for the out of sample classification error is:
+```{r}
+err <- 1-cross_cm$overall[1]
+names(err) <- NULL
+err
+```
 # Prediction for test set
 
 ```{r}
